@@ -1,0 +1,220 @@
+---
+title: "Cyclistic members Vs Casuals users "
+author: "Mehdi Al kubaisi"
+date: "2023-04-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+load("C://Users//Al kubaisi Mehdi//Desktop//Etudes_de_cas//fichier originaux//save_env.RData")
+library(tidyverse)
+read.csv('C:\\Users\\Al kubaisi Mehdi\\Desktop\\Etudes_de_cas\\fichier originaux\\Divvy_Trips_2019_Q2.csv')
+read.csv('C:\\Users\\Al kubaisi Mehdi\\Desktop\\Etudes_de_cas\\fichier originaux\\Divvy_Trips_2019_Q3.csv')
+read.csv('C:\\Users\\Al kubaisi Mehdi\\Desktop\\Etudes_de_cas\\fichier originaux\\Divvy_Trips_2019_Q4.csv')
+read.csv('C:\\Users\\Al kubaisi Mehdi\\Desktop\\Etudes_de_cas\\fichier originaux\\Divvy_Trips_2020_Q1.csv')
+```
+
+# Quelles sont les diffences d'utilisation des vélos Cyclistic entre les membres annuels et les membres occasionnels ?
+
+Nous allons essayer de répondre à la question à partir de differents jeux de données fournis par la société Cyclistic. Les jeux de données concernés sont les 4 trimestres couvrant la période 2019 à 2020. 
+Dans un permier temps, nous allons combiner ces jeux de données en un seul afin de travailler plus efficaçement avec un seul dataset.
+Détaillons cela : 
+
+## 1. Regroupons les dataframes
+
+### 1.1 Renommer les dataframes puis les colonnes afin de fusionner les datasets
+
+Afin de synchroniser, dans le futur, nos datas, j'utilise la fonction R rename sur les variables pour uniformiser le tout.
+```{r fusionnage datasets, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+q2_2019 <- Divvy_Trips_2019_Q2
+q3_2019 <- Divvy_Trips_2019_Q3
+q4_2019 <- Divvy_Trips_2019_Q4
+q1_2020 <- Divvy_Trips_2020_Q1
+
+(q4_2019 <- rename(q4_2019
+                   ,ride_id = trip_id
+                   ,rideable_type = bikeid 
+                   ,started_at = start_time  
+                   ,ended_at = end_time  
+                   ,start_station_name = from_station_name 
+                   ,start_station_id = from_station_id 
+                   ,end_station_name = to_station_name 
+                   ,end_station_id = to_station_id 
+                   ,member_casual = usertype))
+
+(q3_2019 <- rename(q3_2019
+                   ,ride_id = trip_id
+                   ,rideable_type = bikeid 
+                   ,started_at = start_time  
+                   ,ended_at = end_time  
+                   ,start_station_name = from_station_name 
+                   ,start_station_id = from_station_id 
+                   ,end_station_name = to_station_name 
+                   ,end_station_id = to_station_id 
+                   ,member_casual = usertype))
+
+(q2_2019 <- rename(q2_2019
+                   ,ride_id = "01 - Rental Details Rental ID"
+                   ,rideable_type = "01 - Rental Details Bike ID" 
+                   ,started_at = "01 - Rental Details Local Start Time"  
+                   ,ended_at = "01 - Rental Details Local End Time"  
+                   ,start_station_name = "03 - Rental Start Station Name" 
+                   ,start_station_id = "03 - Rental Start Station ID"
+                   ,end_station_name = "02 - Rental End Station Name" 
+                   ,end_station_id = "02 - Rental End Station ID"
+                   ,member_casual = "User Type"))
+```
+
+### 1.2 Conversion
+
+Nous avons maintenant 4 jeux de données avec des nommages de colonnes correspondant.
+Cependant, nous avons besoin de changer les types de certaines variables afin de pouvoir les manipuler plus simplement et fusionner nos datas.
+
+
+```{r convertissons les colonn, echo=TRUE}
+q4_2019 <-  mutate(q4_2019, ride_id = as.character(ride_id)
+                   ,rideable_type = as.character(rideable_type)) 
+q3_2019 <-  mutate(q3_2019, ride_id = as.character(ride_id)
+                   ,rideable_type = as.character(rideable_type)) 
+q2_2019 <-  mutate(q2_2019, ride_id = as.character(ride_id)
+                   ,rideable_type = as.character(rideable_type))
+```
+
+### 1.3 Fusion des jeux de données
+
+Relions les datas en un seul dataframe que nous nommerons **all_trips**
+```{r fusion, echo=TRUE}
+all_trips <- bind_rows(q2_2019, q3_2019, q4_2019, q1_2020)
+```
+Bien, nous pouvons commencer à travailler sur notre nouveau dataframe.
+
+## 2. Triage et nettoyage
+
+### 2.1 Selection des colonnes
+
+```{r supression des colonnes non utile, echo=TRUE}
+all_trips <- all_trips %>%  
+  select(-c(start_lat, start_lng, end_lat, end_lng, birthyear, gender, "01 - Rental Details Duration In Seconds Uncapped", "05 - Member Details Member Birthday Year", "Member Gender", "tripduration"))
+```
+Inspectons notre nouveau DF
+
+```{r echo=TRUE}
+head(all_trips)
+dim(all_trips)
+glimpse(all_trips)
+```
+
+Nous nous apercevons que la nomination des types de membres a changer,les membres **casual** et **member** sont devenus **customer** et **subscriber**.
+Harmonisons tout cela : 
+```{r}
+all_trips <- all_trips %>% 
+  mutate(member_casual = recode(member_casual
+                                ,"Subscriber" = "member"
+                                ,"Customer" = "casual"))
+```
+
+### 2.2 Ajout de colonnes afin de repartir les usages de velos selon les jours de la semaine
+
+```{r echo=TRUE}
+all_trips$date <- as.Date(all_trips$started_at)
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+```
+
+Création de la colonne temps de trajet :
+
+```{r temps de trajet, echo=TRUE}
+all_trips$ride_length <- difftime(all_trips$ended_at,all_trips$started_at)
+all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length))
+
+```
+Ici, nous pouvons voir en inspectant notre DF **all_trips** que nous avons des temps de trajet négatifs, cela correspond au fait que certains vélos sont mis en réparation. Leur temps de trajet ne doivent donc pas entrer en compte dans nos calculs.
+
+### 2.3 Supressions des valeurs abérrantes
+
+Créons un nouveau DF que nous appellerons **all_trips_v2** sans ces valeurs.
+
+```{r echo=TRUE}
+all_trips_v2 <- all_trips[!(all_trips$start_station_name == "HQ QR" | all_trips$ride_length<0),]
+```
+
+### 2.4 Aggrégations des données
+
+Organisons maintenant notre nouveau tableau par jour de la semaine et par moyenne d'utilisation journalière en fonction du type de l'utilisateur **member** ou **casual**:
+
+```{r echo=TRUE}
+all_trips_v2$day_of_week <- ordered(all_trips_v2$day_of_week, levels=c("dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "Samedi"))
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+
+all_trips_v2 %>%
+  mutate(weekday = wday(started_at, label=TRUE)) %>% 
+  group_by(member_casual, weekday) %>%
+  summarise(number_of_rides = n(),average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)	
+```
+
+## 3 Visualisation de nos résultats
+
+### 3.1 Graphique du nombre moyen de trajets par jour et par types d'utilisateur:
+
+Représentons par un graphique nos résultats :
+
+```{r}
+all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(), .groups = "drop"
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge")+
+  geom_text(aes(label=number_of_rides),size=3, position=position_dodge(width=0.9), vjust=-0.75)+
+  labs(title = "Nombre de trajets moyen par jour", subtitle = "Member VS Casual", x="jours",y="Nombre moyen de trajets", fill = "Utilisateurs")
+  
+
+```
+
+## 3.2 Graphique du temps moyen de trajets par jour et par types d'utilisateur:
+
+```{r echo=TRUE}
+all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge")+
+  labs(title = "Temps des trajets moyen par jour", subtitle = "Member VS Casual", x="jours",y="Temps moyen", fill = "Utilisateurs")
+```
+```{r echo=TRUE}
+mean(all_trips_v2$ride_length[all_trips_v2$member_casual == "member"]) #temps moyen membre
+mean(all_trips_v2$ride_length[all_trips_v2$member_casual == "casual"]) # temps moyen casual
+```
+
+## 4 Conclusion
+
+D'après nos résultats présents sur nos graphiques, nous pouvons essayer de répondre à la question posée initialement :
+***Quelles sont les diffences d'utilisation des vélos Cyclistic entre les membres annuels et les occasionnels ?***
+
+Voici les faits :
+* Nous avons 2 973 868 Utilisateurs ***Membre*** pour 905954 utilisateurs ***Casual*** soit 3,3 fois plus environ.
+
+* Le nombre de trajets effectués quotidiennement par les ***Membres*** est donc plus important.
+
+* Le temps de trajet moyen pour les ***membres*** et de 850sec soit 14min , il est de 3552sec soit 59min pour les ***casuals***.
+
+En résumé, bien que les utilisateurs ***membres*** effectuent de nombreux trajets, ils le font sur des distances plus courtes mais plus régulièrement. Les membres ***casuals***, quant à eux, effectuent 3 fois moins de trajets mais effectuent des courses plus longues.
+
+Mes hypothèses sont :
+
+* Que les utilisateurs ***membres*** sont des utilisateurs de Cyclistic pour un usage professionel. Ils se rendent sur le lieu de leur travail en vélo puis rentrent chez eux de la même manière. Ils effectuent donc au minimum deux trajets par jour mais uniquement dans un but d'effectuer la route qui les sépare de leur travail.
+
+* Les utilisateurs ***casuals*** utilisent les vélos de l'entreprise à des fins de loisir. Leurs courses sont plus longues mais plus rares car ils n'ont pas d'imperatifs professionels. Un abonnement Membre peut ne pas leur sembler attrayant au vue du rapport **prix abonnement/nbr d'utilisation**.
+
+
+
+
